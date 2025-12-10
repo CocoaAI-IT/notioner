@@ -1,0 +1,10 @@
+{
+  "id": "notioner",
+  "name": "Notioner",
+  "version": "0.1.0",
+  "minAppVersion": "0.15.0",
+  "description": "A Notion-like block-based editor for Obsidian with slash commands, grids, resizable images, and interactive layouts",
+  "author": "Notioner Team",
+  "authorUrl": "https://github.com/notioner",
+  "isDesktopOnly": false
+}
