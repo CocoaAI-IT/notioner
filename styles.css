@@ -46,7 +46,45 @@
   cursor: grabbing;
 }
 
-/* ========== Slash Menu ========== */
+/* ========== Slash Menu (EditorSuggest) ========== */
+.notioner-suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.notioner-suggestion-icon {
+  font-size: 1.25rem;
+  width: 1.5rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.notioner-suggestion-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.notioner-suggestion-title {
+  font-weight: 500;
+  margin-bottom: 0.125rem;
+}
+
+.notioner-suggestion-description {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suggestion-item.is-selected .notioner-suggestion-description {
+  color: var(--text-on-accent);
+  opacity: 0.8;
+}
+
+/* ========== Old Slash Menu (Legacy) ========== */
 .notioner-slash-menu {
   position: fixed;
   z-index: 1000;

@@ -1,21 +1,17 @@
 import { Plugin, MarkdownView, Editor, EditorPosition } from 'obsidian';
-import { NotionerSettings, DEFAULT_SETTINGS, Block, SlashCommandItem } from './types';
+import { NotionerSettings, DEFAULT_SETTINGS, Block, BlockType } from './types';
 import { NotionerSettingTab } from './settings';
 import { BlockManager } from './blocks/blockManager';
 import { BlockRenderer } from './blocks/blockRenderer';
-import { SlashMenu } from './ui/slashMenu';
 import { ImageResizer } from './ui/imageResize';
 import { DragDropManager } from './ui/dragDrop';
+import { SlashCommandSuggest } from './ui/slashCommandSuggest';
 
 export default class NotionerPlugin extends Plugin {
   settings: NotionerSettings;
   blockManager: BlockManager;
   blockRenderer: BlockRenderer;
-  slashMenu: SlashMenu | null = null;
   dragDropManager: DragDropManager | null = null;
-  private slashMenuActive: boolean = false;
-  private slashMenuQuery: string = '';
-  private currentEditor: Editor | null = null;
 
   async onload() {
     console.log('Loading Notioner plugin');
@@ -34,26 +30,18 @@ export default class NotionerPlugin extends Plugin {
       this.processNotionerBlocks(element, context);
     });
 
-    // Register editor extension for slash command
-    this.setupEditorExtension();
+    // Register slash command suggest
+    console.log('Notioner: Registering EditorSuggest for slash commands');
+    this.registerEditorSuggest(new SlashCommandSuggest(this));
 
     // Add commands
     this.addCommands();
-
-    // Register events
-    this.registerDomEvent(document, 'keydown', (evt: KeyboardEvent) => {
-      this.handleKeydown(evt);
-    });
 
     console.log('Notioner plugin loaded');
   }
 
   onunload() {
     console.log('Unloading Notioner plugin');
-
-    if (this.slashMenu) {
-      this.slashMenu.hide();
-    }
 
     if (this.dragDropManager) {
       const container = document.querySelector('.notioner-container');
@@ -71,103 +59,10 @@ export default class NotionerPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
-  private setupEditorExtension() {
-    this.registerEvent(
-      this.app.workspace.on('active-leaf-change', () => {
-        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (view) {
-          this.currentEditor = view.editor;
-          this.setupEditorListeners(view.editor);
-        }
-      })
-    );
-  }
-
-  private setupEditorListeners(editor: Editor) {
-    // Monitor for slash command trigger
-    this.registerDomEvent(
-      (editor as any).cm.contentDOM,
-      'input',
-      (evt: InputEvent) => {
-        if (!this.settings.enableSlashCommand) return;
-
-        const cursor = editor.getCursor();
-        const line = editor.getLine(cursor.line);
-        const beforeCursor = line.substring(0, cursor.ch);
-
-        // Check if user typed '/' at start of line or after space
-        if (beforeCursor.endsWith('/') && (beforeCursor.length === 1 || beforeCursor[beforeCursor.length - 2] === ' ')) {
-          this.showSlashMenu(editor, cursor);
-        } else if (this.slashMenuActive) {
-          // Update menu with current query
-          const slashIndex = beforeCursor.lastIndexOf('/');
-          if (slashIndex !== -1) {
-            this.slashMenuQuery = beforeCursor.substring(slashIndex + 1);
-            if (this.slashMenu) {
-              this.slashMenu.updateQuery(this.slashMenuQuery);
-            }
-          }
-        }
-      }
-    );
-  }
-
-  private showSlashMenu(editor: Editor, cursor: EditorPosition) {
-    if (!this.slashMenu) {
-      this.slashMenu = new SlashMenu(
-        (item: SlashCommandItem) => this.onSlashCommandSelect(item, editor, cursor),
-        () => {
-          this.slashMenuActive = false;
-          this.slashMenuQuery = '';
-        }
-      );
-    }
-
-    // Get cursor position on screen
-    const coords = (editor as any).cm.coordsAtPos(editor.posToOffset(cursor));
-    if (coords) {
-      this.slashMenu.show(coords.left, coords.bottom, '');
-      this.slashMenuActive = true;
-      this.slashMenuQuery = '';
-    }
-  }
-
-  private onSlashCommandSelect(item: SlashCommandItem, editor: Editor, cursor: EditorPosition) {
-    // Remove the slash command text
-    const line = editor.getLine(cursor.line);
-    const slashIndex = line.lastIndexOf('/');
-    if (slashIndex !== -1) {
-      editor.replaceRange(
-        '',
-        { line: cursor.line, ch: slashIndex },
-        { line: cursor.line, ch: cursor.ch }
-      );
-    }
-
-    // Insert the block
-    this.insertBlock(item.blockType, editor, cursor);
-
-    this.slashMenuActive = false;
-  }
-
-  private insertBlock(blockType: string, editor: Editor, cursor: EditorPosition) {
-    const block = this.blockManager.createBlock(blockType as any);
-
-    // Convert block to markdown
-    const markdown = this.blockToMarkdown(block);
-
-    // Insert into editor
-    editor.replaceRange(markdown, cursor);
-
-    // Move cursor to end of inserted content
-    const newCursor = {
-      line: cursor.line,
-      ch: cursor.ch + markdown.length,
-    };
-    editor.setCursor(newCursor);
-  }
-
-  private blockToMarkdown(block: Block): string {
+  /**
+   * Convert block to markdown syntax
+   */
+  blockToMarkdown(block: Block): string {
     switch (block.type) {
       case 'heading1':
         return '# ';
@@ -217,30 +112,6 @@ export default class NotionerPlugin extends Plugin {
 
     markdown += '</div>\n';
     return markdown;
-  }
-
-  private handleKeydown(evt: KeyboardEvent) {
-    if (!this.slashMenuActive || !this.slashMenu) return;
-
-    switch (evt.key) {
-      case 'ArrowUp':
-        evt.preventDefault();
-        this.slashMenu.selectPrevious();
-        break;
-      case 'ArrowDown':
-        evt.preventDefault();
-        this.slashMenu.selectNext();
-        break;
-      case 'Enter':
-        evt.preventDefault();
-        this.slashMenu.selectCurrent();
-        break;
-      case 'Escape':
-        evt.preventDefault();
-        this.slashMenu.hide();
-        this.slashMenuActive = false;
-        break;
-    }
   }
 
   private processNotionerBlocks(element: HTMLElement, context: any) {
@@ -331,13 +202,13 @@ export default class NotionerPlugin extends Plugin {
       },
     });
 
-    // Command to toggle slash menu
+    // Command to trigger slash menu
     this.addCommand({
-      id: 'toggle-slash-menu',
-      name: 'Toggle Slash Menu',
+      id: 'trigger-slash-menu',
+      name: 'Trigger Slash Menu',
       editorCallback: (editor: Editor) => {
-        const cursor = editor.getCursor();
-        this.showSlashMenu(editor, cursor);
+        // Simply insert a slash, EditorSuggest will handle the rest
+        editor.replaceSelection('/');
       },
       hotkeys: [
         {
